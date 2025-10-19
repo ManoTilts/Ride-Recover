@@ -1,0 +1,73 @@
+# Gradle
+.gradle/
+build/
+out/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Local configuration files
+local.properties
+*.iml
+
+# Android
+**/android/.gradle/
+**/android/build/
+**/android/libs/*.jar
+**/android/gen/
+**/android/.idea/
+
+# iOS (if using RoboVM)
+**/ios/build/
+**/ios/xcode/
+**/ios/robovm.properties
+**/ios/robovm.xml
+
+# HTML (GWT)
+**/html/war/
+**/html/build/
+**/html/gwt-unitCache/
+**/html/war/WEB-INF/deploy/
+**/html/war/WEB-INF/classes/
+**/html/.apt_generated/
+.gwt/
+gwt-unitCache/
+
+# IntelliJ IDEA / Android Studio
+.idea/
+*.ipr
+*.iws
+*.iml
+*.class
+out/
+
+# Eclipse
+.classpath
+.project
+.settings/
+bin/
+
+# VS Code
+.vscode/
+
+# macOS / Windows
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Distribution archives
+*.apk
+*.ap_
+*.jar
+*.war
+*.zip
+*.tar
+*.tar.gz
+*.dmg
+*.exe
+
+# Other cache folders
+.cache/
+.cordova/
+node_modules/
