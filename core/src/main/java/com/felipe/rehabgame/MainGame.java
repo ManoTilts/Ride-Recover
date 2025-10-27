@@ -69,8 +69,15 @@ public class MainGame extends ApplicationAdapter {
                 float t = currentRpm / TARGET_RPM_FOR_MAX_SPEED;
                 if (t > 1f) t = 1f;
                 if (t < 0f) t = 0f;
-                // agora a velocidade é diretamente atrelada ao RPM (sem suavização de aceleração)
-                speedPxPerSec = t * MAX_SPEED_PX_PER_SEC;
+                float targetSpeed = t * MAX_SPEED_PX_PER_SEC;
+
+                // Se o alvo for menor que a velocidade atual, desacelerar gradualmente
+                if (targetSpeed < speedPxPerSec) {
+                    speedPxPerSec = Math.max(targetSpeed, speedPxPerSec - DECELERATION_PX_PER_SEC2 * delta);
+                } else {
+                    // Se o alvo for maior, aplicar imediatamente (controle responsivo ao aumento de RPM)
+                    speedPxPerSec = targetSpeed;
+                }
             } else {
                 // sem pulsos recentes -> reduzir velocidade gradualmente (inércia)
                 speedPxPerSec = Math.max(0f, speedPxPerSec - DECELERATION_PX_PER_SEC2 * delta);
