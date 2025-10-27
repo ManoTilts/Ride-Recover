@@ -3,7 +3,6 @@ package com.felipe.rehabgame;
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
-import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
@@ -20,8 +19,10 @@ public class MainGame extends ApplicationAdapter {
 
     // movement
     private float speedPxPerSec = 0f;
-    private final float MAX_SPEED_PX_PER_SEC = 450f; // ajuste conforme necessário
-    private final float TARGET_RPM_FOR_MAX_SPEED = 90f; // mapeia 90 RPM para velocidade máxima
+    private final float MAX_SPEED_PX_PER_SEC = 500f; // ajuste conforme necessário (cap atual)
+    private final float TARGET_RPM_FOR_MAX_SPEED = 300f; // mapeia 300 RPM para velocidade máxima (cap)
+    // desaceleração (px/s^2) — mantém a redução de velocidade quando o usuário para
+    private final float DECELERATION_PX_PER_SEC2 = 200f; // como diminui quando para
 
     // pedal pulse / cadence tracking
     private final Object pulseLock = new Object();
@@ -64,15 +65,15 @@ public class MainGame extends ApplicationAdapter {
 
             if (smoothedIntervalMs > 0.0f) {
                 currentRpm = (60_000f / smoothedIntervalMs); // ms -> RPM
-                // mapear RPM para velocidade linear (pode trocar curva conforme necessidade)
+                // mapeamento linear direto: RPM -> target speed
                 float t = currentRpm / TARGET_RPM_FOR_MAX_SPEED;
                 if (t > 1f) t = 1f;
                 if (t < 0f) t = 0f;
+                // agora a velocidade é diretamente atrelada ao RPM (sem suavização de aceleração)
                 speedPxPerSec = t * MAX_SPEED_PX_PER_SEC;
             } else {
                 // sem pulsos recentes -> reduzir velocidade gradualmente (inércia)
-                // decaimento configurável; aqui 200 px/s^2
-                speedPxPerSec = Math.max(0f, speedPxPerSec - 200f * delta);
+                speedPxPerSec = Math.max(0f, speedPxPerSec - DECELERATION_PX_PER_SEC2 * delta);
             }
         }
 
