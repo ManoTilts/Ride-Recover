@@ -36,7 +36,7 @@ public class MainGame extends ApplicationAdapter {
     public void create() {
         batch = new SpriteBatch();
         // atualmente usa a imagem padrão; substitua por um sprite do personagem se quiser
-        playerTexture = new Texture("libgdx.png");
+        playerTexture = new Texture("moto.png");
         font = new BitmapFont();
         font.getData().setScale(1.0f);
 
