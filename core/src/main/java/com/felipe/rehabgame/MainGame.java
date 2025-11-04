@@ -6,7 +6,14 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.g2d.Sprite;
+import com.badlogic.gdx.graphics.g2d.TextureAtlas;
+import com.badlogic.gdx.utils.JsonReader;
+import com.badlogic.gdx.utils.JsonValue;
 import com.badlogic.gdx.utils.ScreenUtils;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /** {@link com.badlogic.gdx.ApplicationListener} implementation shared by all platforms. */
 public class MainGame extends ApplicationAdapter {
@@ -32,9 +39,17 @@ public class MainGame extends ApplicationAdapter {
     // se não houver pulsos por este intervalo, consideramos que o usuário parou
     private final long PULSE_TIMEOUT_MS = 1500L; // 1.5s sem pulsos => parar
 
+    // === NOVO: integração do mapa HyperLap2D ===
+    private TextureAtlas mapAtlas;               // atlas do HyperLap2D
+    private List<Sprite> mapSprites;             // sprites da cena
+
     @Override
     public void create() {
         batch = new SpriteBatch();
+
+        // === NOVO: carregar mapa do HyperLap2D ===
+        loadMap("pack.atlas", "MainScene.dt");
+
         // atualmente usa a imagem padrão; substitua por um sprite do personagem se quiser
         playerTexture = new Texture("moto.png");
         font = new BitmapFont();
@@ -43,6 +58,40 @@ public class MainGame extends ApplicationAdapter {
         // pos inicial
         playerX = 20f;
         playerY = Gdx.graphics.getHeight() * 0.3f;
+    }
+
+    /**
+     * === NOVO ===
+     * Carrega o atlas e o JSON exportado pelo HyperLap2D e monta os sprites do mapa
+     */
+    private void loadMap(String atlasPath, String sceneJsonPath) {
+        mapAtlas = new TextureAtlas(Gdx.files.internal(atlasPath)); // carregar o atlas
+        mapSprites = new ArrayList<>();
+
+        // ler o JSON (arquivo .dt é JSON na prática)
+        JsonReader reader = new JsonReader();
+        JsonValue root = reader.parse(Gdx.files.internal(sceneJsonPath));
+
+        // acessar array de imagens (SimpleImageVO)
+        JsonValue images = root.get("composite").get("content")
+            .get("games.rednblack.editor.renderer.data.SimpleImageVO");
+
+        for (JsonValue img : images) {
+            String imageName = img.getString("imageName");
+            float x = img.getFloat("x");
+            float y = img.getFloat("y");
+            float originX = img.getFloat("originX", 0);
+            float originY = img.getFloat("originY", 0);
+
+            Sprite sprite = mapAtlas.createSprite(imageName);
+            if (sprite != null) {
+                sprite.setPosition(x, y);
+                sprite.setOrigin(originX, originY);
+                mapSprites.add(sprite);
+            } else {
+                System.out.println("Sprite não encontrado no atlas: " + imageName);
+            }
+        }
     }
 
     @Override
@@ -95,6 +144,12 @@ public class MainGame extends ApplicationAdapter {
         // desenho
         ScreenUtils.clear(0.15f, 0.15f, 0.2f, 1f);
         batch.begin();
+
+        // === NOVO: desenhar todos os sprites do mapa primeiro ===
+        for (Sprite s : mapSprites) {
+            s.draw(batch);
+        }
+
         batch.draw(playerTexture, playerX, playerY);
 
         // HUD
@@ -108,6 +163,9 @@ public class MainGame extends ApplicationAdapter {
         batch.dispose();
         playerTexture.dispose();
         font.dispose();
+
+        // === NOVO: descarta recursos do mapa ===
+        if (mapAtlas != null) mapAtlas.dispose();
     }
 
     /**

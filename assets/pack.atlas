@@ -1,0 +1,41 @@
+
+pack.png
+size: 2048, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+grass
+  rotate: false
+  xy: 963, 69
+  size: 348, 348
+  orig: 348, 348
+  offset: 0, 0
+  index: -1
+lake
+  rotate: false
+  xy: 601, 57
+  size: 360, 360
+  orig: 360, 360
+  offset: 0, 0
+  index: -1
+moto
+  rotate: false
+  xy: 1313, 185
+  size: 348, 232
+  orig: 348, 232
+  offset: 0, 0
+  index: -1
+ramp
+  rotate: false
+  xy: 1, 4
+  size: 598, 413
+  orig: 598, 413
+  offset: 0, 0
+  index: -1
+white-pixel
+  rotate: false
+  xy: 1, 1
+  size: 1, 1
+  orig: 1, 1
+  offset: 0, 0
+  index: -1
