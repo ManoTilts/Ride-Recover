@@ -179,6 +179,9 @@ public class MainGame extends ApplicationAdapter {
         // Check ground and ramp collision
         checkGroundAndRampCollision();
         
+        // Check lake collision (game over)
+        checkLakeCollision();
+        
         // Check flag collision
         checkFlagCollision();
 
@@ -407,6 +410,34 @@ public class MainGame extends ApplicationAdapter {
         }
     }
 
+    private void checkLakeCollision() {
+        float playerWidth = playerTexture.getWidth() * PLAYER_SCALE;
+        float playerHeight = playerTexture.getHeight() * PLAYER_SCALE;
+        Rectangle playerBox = new Rectangle(playerX, playerY, playerWidth, playerHeight);
+        
+        // Check tiles near player for better performance
+        int startCol = Math.max(0, (int)(playerX / currentLevel.tileSize) - 1);
+        int endCol = Math.min(currentLevel.width - 1, (int)((playerX + playerWidth) / currentLevel.tileSize) + 1);
+        
+        for (int row = 0; row < currentLevel.height; row++) {
+            for (int col = startCol; col <= endCol; col++) {
+                if (currentLevel.getTile(row, col) == 3) { // Lake tile
+                    float worldX = col * currentLevel.tileSize;
+                    float worldY = (currentLevel.height - row - 1) * currentLevel.tileSize;
+                    
+                    Rectangle tileBox = new Rectangle(worldX, worldY, currentLevel.tileSize, currentLevel.tileSize);
+                    
+                    if (playerBox.overlaps(tileBox)) {
+                        // Game over - reset player to spawn
+                        resetPlayer();
+                        System.out.println("Hit the lake! Resetting...");
+                        return;
+                    }
+                }
+            }
+        }
+    }
+    
     private void checkFlagCollision() {
         if (levelComplete) return;
         
@@ -432,6 +463,26 @@ public class MainGame extends ApplicationAdapter {
         }
     }
 
+    private void resetPlayer() {
+        // Reset player to spawn position
+        int spawnCol = (int)(currentLevel.playerSpawn.x / currentLevel.tileSize);
+        int spawnRow = (int)(currentLevel.playerSpawn.y / currentLevel.tileSize);
+        
+        playerX = spawnCol * currentLevel.tileSize;
+        playerY = (currentLevel.height - spawnRow - 1) * currentLevel.tileSize;
+        
+        // Reset physics
+        velocityY = 0f;
+        speedPxPerSec = 0f;
+        isOnGround = false;
+        
+        // Reset pedal tracking
+        synchronized (pulseLock) {
+            lastPulseTime = 0L;
+            smoothedIntervalMs = 0f;
+        }
+    }
+    
     /**
      * Deve ser chamada quando um pulso de pedal for detectado (do IoT ou do teclado).
      * Thread-safe: pode ser chamada a partir de um listener de rede/serial.
