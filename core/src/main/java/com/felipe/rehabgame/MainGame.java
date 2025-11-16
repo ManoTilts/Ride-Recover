@@ -59,7 +59,7 @@ public class MainGame extends ApplicationAdapter {
     // Physics
     private float velocityY = 0f;
     private final float GRAVITY = -980f; // pixels/s^2
-    private final float JUMP_VELOCITY = 400f;
+    private final float RAMP_LAUNCH_ANGLE = 45f; // Degrees - natural ramp angle for launch
     private boolean isOnGround = false;
     
     // Player rendering
@@ -138,12 +138,6 @@ public class MainGame extends ApplicationAdapter {
         if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
             registerPedalPulse();
         }
-        
-        // Jump with UP arrow
-        if (Gdx.input.isKeyJustPressed(Input.Keys.UP) && isOnGround) {
-            velocityY = JUMP_VELOCITY;
-            isOnGround = false;
-        }
 
         // Calcular velocidade atual com base no smoothedIntervalMs
         float currentRpm = 0f;
@@ -182,8 +176,8 @@ public class MainGame extends ApplicationAdapter {
         // mover personagem horizontalmente
         playerX += speedPxPerSec * delta;
 
-        // Check ground collision
-        checkGroundCollision();
+        // Check ground and ramp collision
+        checkGroundAndRampCollision();
         
         // Check flag collision
         checkFlagCollision();
@@ -217,7 +211,7 @@ public class MainGame extends ApplicationAdapter {
         batch.begin();
 
         // HUD
-        String hud = String.format("RPM: %.1f  Speed: %.0f px/s  (SPACE=Pedal, UP=Jump)", currentRpm, speedPxPerSec);
+        String hud = String.format("RPM: %.1f  Speed: %.0f px/s  Y-Vel: %.0f (SPACE=Pedal)", currentRpm, speedPxPerSec, velocityY);
         font.draw(batch, hud, 10, Gdx.graphics.getHeight() - 10);
         
         if (levelComplete) {
@@ -315,12 +309,13 @@ public class MainGame extends ApplicationAdapter {
         }
     }
     
-    private void checkGroundCollision() {
+    private void checkGroundAndRampCollision() {
         float playerWidth = playerTexture.getWidth() * PLAYER_SCALE;
         float playerHeight = playerTexture.getHeight() * PLAYER_SCALE;
         
         Rectangle playerBox = new Rectangle(playerX, playerY, playerWidth, playerHeight);
         isOnGround = false;
+        boolean hitRamp = false;
         
         // Check tiles near player for better performance
         int startCol = Math.max(0, (int)(playerX / currentLevel.tileSize) - 1);
@@ -330,19 +325,58 @@ public class MainGame extends ApplicationAdapter {
             for (int col = startCol; col <= endCol; col++) {
                 int tile = currentLevel.getTile(row, col);
                 
-                // Only solid tiles (grass, ramp)
-                if (tile == 1 || tile == 2) {
+                // Check floor (grass) - acts as solid barrier
+                if (tile == 1) {
                     float worldX = col * currentLevel.tileSize;
                     float worldY = (currentLevel.height - row - 1) * currentLevel.tileSize;
                     
                     Rectangle tileBox = new Rectangle(worldX, worldY, currentLevel.tileSize, currentLevel.tileSize);
                     
                     if (playerBox.overlaps(tileBox)) {
-                        // Stop falling and place on top of tile
+                        // Floor is a solid barrier - stop falling and place on top
                         if (velocityY <= 0 && playerY < worldY + currentLevel.tileSize) {
                             playerY = worldY + currentLevel.tileSize;
                             velocityY = 0;
                             isOnGround = true;
+                        }
+                    }
+                }
+                // Check ramp - acts like a slope that redirects velocity
+                else if (tile == 2 && !hitRamp) {
+                    float worldX = col * currentLevel.tileSize;
+                    float worldY = (currentLevel.height - row - 1) * currentLevel.tileSize;
+                    
+                    Rectangle tileBox = new Rectangle(worldX, worldY, currentLevel.tileSize, currentLevel.tileSize);
+                    
+                    if (playerBox.overlaps(tileBox)) {
+                        hitRamp = true;
+                        
+                        // Check if there's another ramp tile to the right (extended ramp)
+                        boolean hasRampToRight = false;
+                        if (col + 1 < currentLevel.width) {
+                            int nextTile = currentLevel.getTile(row, col + 1);
+                            hasRampToRight = (nextTile == 2);
+                        }
+                        
+                        // Check if player is at the top edge of the ramp (launching off)
+                        float playerBottomY = playerY;
+                        float rampTopY = worldY + currentLevel.tileSize;
+                        float playerRightX = playerX + playerWidth;
+                        float rampRightX = worldX + currentLevel.tileSize;
+                        
+                        // Only launch if at the edge AND no more ramp tiles to the right
+                        if (!hasRampToRight && playerRightX > rampRightX - 10 && playerBottomY >= rampTopY - 10) {
+                            // Launch at angle based on horizontal speed
+                            double angleRad = Math.toRadians(RAMP_LAUNCH_ANGLE);
+                            velocityY = (float)(speedPxPerSec * Math.sin(angleRad));
+                            isOnGround = false;
+                        } else {
+                            // Player is on the ramp surface - keep them grounded
+                            if (velocityY <= 0 && playerY < worldY + currentLevel.tileSize) {
+                                playerY = worldY + currentLevel.tileSize;
+                                velocityY = 0;
+                                isOnGround = true;
+                            }
                         }
                     }
                 }
