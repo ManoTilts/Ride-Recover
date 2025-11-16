@@ -38,8 +38,12 @@ public class MainGame extends ApplicationAdapter {
 
     // === Level System ===
     private LevelData currentLevel;
+    private int currentLevelNumber = 1;
+    private final int MAX_LEVEL = 3;
     private OrthographicCamera camera;
     private boolean levelComplete = false;
+    private float levelCompleteTimer = 0f;
+    private final float LEVEL_COMPLETE_DELAY = 2.0f; // 2 seconds delay before next level
     private boolean isLoading = true;
     private float loadingProgress = 0f;
     
@@ -60,6 +64,7 @@ public class MainGame extends ApplicationAdapter {
     private float velocityY = 0f;
     private final float GRAVITY = -980f; // pixels/s^2
     private final float RAMP_LAUNCH_ANGLE = 45f; // Degrees - natural ramp angle for launch
+    @SuppressWarnings("unused")
     private boolean isOnGround = false;
     
     // Player rendering
@@ -79,7 +84,8 @@ public class MainGame extends ApplicationAdapter {
         loadingProgress = 0.1f;
         
         // Load level from text file
-        currentLevel = LevelLoader.loadLevel("level1.txt", 64f);
+        String levelFile = "level" + currentLevelNumber + ".txt";
+        currentLevel = LevelLoader.loadLevel(levelFile, 64f);
         loadingProgress = 0.3f;
 
         // Load tile textures from assets folder
@@ -183,7 +189,17 @@ public class MainGame extends ApplicationAdapter {
         checkLakeCollision();
         
         // Check flag collision
-        checkFlagCollision();
+        if (!levelComplete) {
+            checkFlagCollision();
+        }
+        
+        // Handle level completion and progression
+        if (levelComplete) {
+            levelCompleteTimer += delta;
+            if (levelCompleteTimer >= LEVEL_COMPLETE_DELAY) {
+                loadNextLevel();
+            }
+        }
 
         // Update camera to follow player
         float camX = playerX + (playerTexture.getWidth() * PLAYER_SCALE) / 2;
@@ -219,7 +235,14 @@ public class MainGame extends ApplicationAdapter {
         
         if (levelComplete) {
             font.getData().setScale(3.0f);
-            font.draw(batch, "LEVEL COMPLETE!", Gdx.graphics.getWidth() / 2 - 200, Gdx.graphics.getHeight() / 2);
+            String message = currentLevelNumber >= MAX_LEVEL ? "ALL LEVELS COMPLETE!" : "LEVEL COMPLETE!";
+            font.draw(batch, message, Gdx.graphics.getWidth() / 2 - 250, Gdx.graphics.getHeight() / 2);
+            
+            if (currentLevelNumber < MAX_LEVEL) {
+                font.getData().setScale(1.5f);
+                int timeLeft = (int)(LEVEL_COMPLETE_DELAY - levelCompleteTimer);
+                font.draw(batch, "Next level in " + (timeLeft + 1) + "...", Gdx.graphics.getWidth() / 2 - 100, Gdx.graphics.getHeight() / 2 - 50);
+            }
             font.getData().setScale(1.5f);
         }
         
@@ -481,6 +504,53 @@ public class MainGame extends ApplicationAdapter {
             lastPulseTime = 0L;
             smoothedIntervalMs = 0f;
         }
+    }
+    
+    private void loadNextLevel() {
+        if (currentLevelNumber >= MAX_LEVEL) {
+            System.out.println("All levels completed!");
+            return;
+        }
+        
+        // Increment level
+        currentLevelNumber++;
+        System.out.println("Loading level " + currentLevelNumber);
+        
+        // Dispose old level cache
+        if (levelFrameBuffer != null) {
+            levelFrameBuffer.dispose();
+            levelFrameBuffer = null;
+        }
+        if (cachedLevelTexture != null) {
+            cachedLevelTexture = null;
+        }
+        
+        // Load new level
+        String levelFile = "level" + currentLevelNumber + ".txt";
+        currentLevel = LevelLoader.loadLevel(levelFile, 64f);
+        
+        // Reset player to new spawn
+        int spawnCol = (int)(currentLevel.playerSpawn.x / currentLevel.tileSize);
+        int spawnRow = (int)(currentLevel.playerSpawn.y / currentLevel.tileSize);
+        
+        playerX = spawnCol * currentLevel.tileSize;
+        playerY = (currentLevel.height - spawnRow - 1) * currentLevel.tileSize;
+        
+        // Reset physics and state
+        velocityY = 0f;
+        speedPxPerSec = 0f;
+        isOnGround = false;
+        levelComplete = false;
+        levelCompleteTimer = 0f;
+        
+        // Reset pedal tracking
+        synchronized (pulseLock) {
+            lastPulseTime = 0L;
+            smoothedIntervalMs = 0f;
+        }
+        
+        // Rebuild level cache
+        buildLevelCache();
     }
     
     /**
