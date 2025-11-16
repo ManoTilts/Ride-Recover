@@ -24,8 +24,8 @@ public class MainGame extends ApplicationAdapter {
 
     // movement
     private float speedPxPerSec = 0f;
-    private final float MAX_SPEED_PX_PER_SEC = 500f; // ajuste conforme necessário (cap atual)
-    private final float TARGET_RPM_FOR_MAX_SPEED = 300f; // mapeia 300 RPM para velocidade máxima (cap)
+    private final float MAX_SPEED_PX_PER_SEC = 750f; // ajuste conforme necessário (cap atual)
+    private final float TARGET_RPM_FOR_MAX_SPEED = 400f; // mapeia 400 RPM para velocidade máxima (cap)
     // desaceleração (px/s^2) — mantém a redução de velocidade quando o usuário para
     private final float DECELERATION_PX_PER_SEC2 = 200f; // como diminui quando para
 
