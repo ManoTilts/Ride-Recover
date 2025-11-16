@@ -333,11 +333,34 @@ public class MainGame extends ApplicationAdapter {
                     Rectangle tileBox = new Rectangle(worldX, worldY, currentLevel.tileSize, currentLevel.tileSize);
                     
                     if (playerBox.overlaps(tileBox)) {
-                        // Floor is a solid barrier - stop falling and place on top
-                        if (velocityY <= 0 && playerY < worldY + currentLevel.tileSize) {
-                            playerY = worldY + currentLevel.tileSize;
-                            velocityY = 0;
-                            isOnGround = true;
+                        // Calculate overlap on each axis
+                        float overlapX = Math.min(playerX + playerWidth, worldX + currentLevel.tileSize) - Math.max(playerX, worldX);
+                        float overlapY = Math.min(playerY + playerHeight, worldY + currentLevel.tileSize) - Math.max(playerY, worldY);
+                        
+                        // Determine collision direction based on smallest overlap and velocity
+                        if (overlapY < overlapX) {
+                            // Vertical collision (top or bottom)
+                            if (velocityY <= 0 && playerY < worldY + currentLevel.tileSize) {
+                                // Coming from above - land on top
+                                playerY = worldY + currentLevel.tileSize;
+                                velocityY = 0;
+                                isOnGround = true;
+                            } else if (velocityY > 0 && playerY + playerHeight > worldY) {
+                                // Coming from below - hit bottom
+                                playerY = worldY - playerHeight;
+                                velocityY = 0;
+                            }
+                        } else {
+                            // Horizontal collision (left or right) - act as wall
+                            if (playerX + playerWidth > worldX && playerX < worldX) {
+                                // Hitting from left - push player back
+                                playerX = worldX - playerWidth;
+                                speedPxPerSec = 0; // Stop horizontal movement
+                            } else if (playerX < worldX + currentLevel.tileSize && playerX + playerWidth > worldX + currentLevel.tileSize) {
+                                // Hitting from right - push player forward
+                                playerX = worldX + currentLevel.tileSize;
+                                speedPxPerSec = 0; // Stop horizontal movement
+                            }
                         }
                     }
                 }
