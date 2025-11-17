@@ -58,9 +58,7 @@ public class ParallaxBackground {
      */
     public void draw(SpriteBatch batch) {
         float camLeft = camera.position.x - camera.viewportWidth / 2f;
-        float camRight = camera.position.x + camera.viewportWidth / 2f;
         float camBottom = camera.position.y - camera.viewportHeight / 2f;
-        float camTop = camera.position.y + camera.viewportHeight / 2f;
 
         for (Layer layer : layers) {
             Texture tex = layer.texture;
