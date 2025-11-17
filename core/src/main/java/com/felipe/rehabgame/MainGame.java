@@ -18,6 +18,7 @@ public class MainGame extends ApplicationAdapter {
     private SpriteBatch batch;
     private Texture playerTexture;
     private BitmapFont font;
+    private ParallaxBackground parallax;
 
     private float playerX;
     private float playerY;
@@ -46,27 +47,27 @@ public class MainGame extends ApplicationAdapter {
     private final float LEVEL_COMPLETE_DELAY = 2.0f; // 2 seconds delay before next level
     private boolean isLoading = true;
     private float loadingProgress = 0f;
-    
+
     // Camera viewport (fixed logical size)
     private final float VIEWPORT_WIDTH = 1280f;
     private final float VIEWPORT_HEIGHT = 720f;
-    
+
     private Texture grassTexture;
     private Texture rampTexture;
     private Texture lakeTexture;
     private Texture flagTexture;
-    
+
     // Cached level rendering
     private FrameBuffer levelFrameBuffer;
     private Texture cachedLevelTexture;
-    
+
     // Physics
     private float velocityY = 0f;
     private final float GRAVITY = -980f; // pixels/s^2
     private final float RAMP_LAUNCH_ANGLE = 45f; // Degrees - natural ramp angle for launch
     @SuppressWarnings("unused")
     private boolean isOnGround = false;
-    
+
     // Player rendering
     private final float PLAYER_SCALE = 0.08f; // Scale down the player texture to match tile size (~64px)
 
@@ -79,25 +80,35 @@ public class MainGame extends ApplicationAdapter {
         font = new BitmapFont();
         font.getData().setScale(1.5f);
     }
-    
+
     private void loadAssets() {
         loadingProgress = 0.1f;
-        
+
         // Load level from text file
         String levelFile = "level" + currentLevelNumber + ".txt";
         currentLevel = LevelLoader.loadLevel(levelFile, 64f);
         loadingProgress = 0.3f;
 
+        // Parallax: inicialize após carregar currentLevel
+        parallax = new ParallaxBackground(camera);
+
+        // Fundo distante: estica verticalmente para sempre cobrir a tela (evita buracos)
+        parallax.addLayer(new Texture("background.png"), 0.2f, true, false);
+
+        // Árvore
+        parallax.addLayer(new Texture("tree.png"), 0.5f, false, false);
+
+
         // Load tile textures from assets folder
         grassTexture = new Texture("grass.png");
         loadingProgress = 0.4f;
-        
+
         rampTexture = new Texture("ramp.png");
         loadingProgress = 0.5f;
-        
+
         lakeTexture = new Texture("lake.png");
         loadingProgress = 0.6f;
-        
+
         flagTexture = new Texture("flag.jpg");
         loadingProgress = 0.7f;
 
@@ -110,19 +121,19 @@ public class MainGame extends ApplicationAdapter {
         // Level bottom row is at Y=0, top row is at (height-1) * tileSize
         int spawnCol = (int)(currentLevel.playerSpawn.x / currentLevel.tileSize);
         int spawnRow = (int)(currentLevel.playerSpawn.y / currentLevel.tileSize);
-        
+
         playerX = spawnCol * currentLevel.tileSize;
         // Y coordinate: bottom of level is 0, so row 0 = top, row (height-1) = bottom
         playerY = (currentLevel.height - spawnRow - 1) * currentLevel.tileSize;
-        
+
         System.out.println("Player texture size: " + playerTexture.getWidth() + "x" + playerTexture.getHeight());
         System.out.println("Player scaled size: " + (playerTexture.getWidth() * PLAYER_SCALE) + "x" + (playerTexture.getHeight() * PLAYER_SCALE));
         System.out.println("Tile size: " + currentLevel.tileSize);
         System.out.println("Spawn position: " + playerX + ", " + playerY);
-        
+
         // Pre-render level to framebuffer for performance
         buildLevelCache();
-        
+
         loadingProgress = 1.0f;
         isLoading = false;
     }
@@ -130,14 +141,16 @@ public class MainGame extends ApplicationAdapter {
     @Override
     public void render() {
         ScreenUtils.clear(0.15f, 0.15f, 0.2f, 1f);
-        
+
+
+
         // Load assets on first frame
         if (isLoading) {
             renderLoadingScreen();
             loadAssets();
             return;
         }
-        
+
         float delta = Gdx.graphics.getDeltaTime();
 
         // Input: espaço simula um pulso do dispositivo
@@ -178,21 +191,25 @@ public class MainGame extends ApplicationAdapter {
         // Apply physics
         velocityY += GRAVITY * delta;
         playerY += velocityY * delta;
-        
+
+        //speed ambiente
+        parallax.update(speedPxPerSec, delta);
+
+
         // mover personagem horizontalmente
         playerX += speedPxPerSec * delta;
 
         // Check ground and ramp collision
         checkGroundAndRampCollision();
-        
+
         // Check lake collision (game over)
         checkLakeCollision();
-        
+
         // Check flag collision
         if (!levelComplete) {
             checkFlagCollision();
         }
-        
+
         // Handle level completion and progression
         if (levelComplete) {
             levelCompleteTimer += delta;
@@ -211,6 +228,9 @@ public class MainGame extends ApplicationAdapter {
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
 
+        //desenho paralaxe
+        parallax.draw(batch);
+
         // Draw cached level (much faster than drawing individual tiles)
         if (cachedLevelTexture != null) {
             int levelWidth = (int)(currentLevel.width * currentLevel.tileSize);
@@ -222,9 +242,9 @@ public class MainGame extends ApplicationAdapter {
         float scaledWidth = playerTexture.getWidth() * PLAYER_SCALE;
         float scaledHeight = playerTexture.getHeight() * PLAYER_SCALE;
         batch.draw(playerTexture, playerX, playerY, scaledWidth, scaledHeight);
-        
+
         batch.end();
-        
+
         // Draw HUD (fixed on screen using screen coordinates)
         batch.setProjectionMatrix(batch.getProjectionMatrix().idt());
         batch.begin();
@@ -232,12 +252,12 @@ public class MainGame extends ApplicationAdapter {
         // HUD
         String hud = String.format("RPM: %.1f  Speed: %.0f px/s  Y-Vel: %.0f (SPACE=Pedal)", currentRpm, speedPxPerSec, velocityY);
         font.draw(batch, hud, 10, Gdx.graphics.getHeight() - 10);
-        
+
         if (levelComplete) {
             font.getData().setScale(3.0f);
             String message = currentLevelNumber >= MAX_LEVEL ? "ALL LEVELS COMPLETE!" : "LEVEL COMPLETE!";
             font.draw(batch, message, Gdx.graphics.getWidth() / 2 - 250, Gdx.graphics.getHeight() / 2);
-            
+
             if (currentLevelNumber < MAX_LEVEL) {
                 font.getData().setScale(1.5f);
                 int timeLeft = (int)(LEVEL_COMPLETE_DELAY - levelCompleteTimer);
@@ -245,16 +265,16 @@ public class MainGame extends ApplicationAdapter {
             }
             font.getData().setScale(1.5f);
         }
-        
+
         batch.end();
     }
-    
+
     private void renderLoadingScreen() {
         batch.begin();
         font.getData().setScale(2.0f);
         font.draw(batch, "LOADING...", Gdx.graphics.getWidth() / 2 - 80, Gdx.graphics.getHeight() / 2 + 50);
         font.getData().setScale(1.5f);
-        
+
         int progress = (int)(loadingProgress * 100);
         font.draw(batch, progress + "%", Gdx.graphics.getWidth() / 2 - 20, Gdx.graphics.getHeight() / 2);
         batch.end();
@@ -265,7 +285,8 @@ public class MainGame extends ApplicationAdapter {
         batch.dispose();
         playerTexture.dispose();
         font.dispose();
-        
+
+        if (parallax != null) parallax.dispose();
         if (grassTexture != null) grassTexture.dispose();
         if (rampTexture != null) rampTexture.dispose();
         if (lakeTexture != null) lakeTexture.dispose();
@@ -273,55 +294,55 @@ public class MainGame extends ApplicationAdapter {
         if (levelFrameBuffer != null) levelFrameBuffer.dispose();
         if (cachedLevelTexture != null) cachedLevelTexture.dispose();
     }
-    
+
     private void buildLevelCache() {
         int levelWidth = (int)(currentLevel.width * currentLevel.tileSize);
         int levelHeight = (int)(currentLevel.height * currentLevel.tileSize);
-        
+
         System.out.println("Building level cache: " + levelWidth + "x" + levelHeight);
-        
+
         // Create framebuffer to render level once
         levelFrameBuffer = new FrameBuffer(Pixmap.Format.RGBA8888, levelWidth, levelHeight, false);
-        
+
         // Render all tiles to the framebuffer
         levelFrameBuffer.begin();
         Gdx.gl.glClearColor(0, 0, 0, 0);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
-        
+
         // Create temporary camera for rendering the full level
         OrthographicCamera tempCam = new OrthographicCamera();
         tempCam.setToOrtho(true, levelWidth, levelHeight); // true flips Y axis
         tempCam.position.set(levelWidth / 2, levelHeight / 2, 0);
         tempCam.update();
-        
+
         batch.setProjectionMatrix(tempCam.combined);
         batch.begin();
-        
+
         // Draw all tiles
         int tileCount = 0;
         for (int row = 0; row < currentLevel.height; row++) {
             for (int col = 0; col < currentLevel.width; col++) {
                 int tile = currentLevel.getTile(row, col);
                 if (tile == 0 || tile == 5) continue;
-                
+
                 float worldX = col * currentLevel.tileSize;
                 float worldY = (currentLevel.height - row - 1) * currentLevel.tileSize;
-                
+
                 Texture texture = getTileTexture(tile);
-                
+
                 if (texture != null) {
                     batch.draw(texture, worldX, worldY, currentLevel.tileSize, currentLevel.tileSize);
                     tileCount++;
                 }
             }
         }
-        
+
         batch.end();
         levelFrameBuffer.end();
-        
+
         // Get the texture from framebuffer
         cachedLevelTexture = levelFrameBuffer.getColorBufferTexture();
-        
+
         System.out.println("Level cached! Drew " + tileCount + " tiles once.");
     }
 
@@ -334,35 +355,35 @@ public class MainGame extends ApplicationAdapter {
             default: return null;
         }
     }
-    
+
     private void checkGroundAndRampCollision() {
         float playerWidth = playerTexture.getWidth() * PLAYER_SCALE;
         float playerHeight = playerTexture.getHeight() * PLAYER_SCALE;
-        
+
         Rectangle playerBox = new Rectangle(playerX, playerY, playerWidth, playerHeight);
         isOnGround = false;
         boolean hitRamp = false;
-        
+
         // Check tiles near player for better performance
         int startCol = Math.max(0, (int)(playerX / currentLevel.tileSize) - 1);
         int endCol = Math.min(currentLevel.width - 1, (int)((playerX + playerWidth) / currentLevel.tileSize) + 1);
-        
+
         for (int row = 0; row < currentLevel.height; row++) {
             for (int col = startCol; col <= endCol; col++) {
                 int tile = currentLevel.getTile(row, col);
-                
+
                 // Check floor (grass) - acts as solid barrier
                 if (tile == 1) {
                     float worldX = col * currentLevel.tileSize;
                     float worldY = (currentLevel.height - row - 1) * currentLevel.tileSize;
-                    
+
                     Rectangle tileBox = new Rectangle(worldX, worldY, currentLevel.tileSize, currentLevel.tileSize);
-                    
+
                     if (playerBox.overlaps(tileBox)) {
                         // Calculate overlap on each axis
                         float overlapX = Math.min(playerX + playerWidth, worldX + currentLevel.tileSize) - Math.max(playerX, worldX);
                         float overlapY = Math.min(playerY + playerHeight, worldY + currentLevel.tileSize) - Math.max(playerY, worldY);
-                        
+
                         // Determine collision direction based on smallest overlap and velocity
                         if (overlapY < overlapX) {
                             // Vertical collision (top or bottom)
@@ -394,25 +415,25 @@ public class MainGame extends ApplicationAdapter {
                 else if (tile == 2 && !hitRamp) {
                     float worldX = col * currentLevel.tileSize;
                     float worldY = (currentLevel.height - row - 1) * currentLevel.tileSize;
-                    
+
                     Rectangle tileBox = new Rectangle(worldX, worldY, currentLevel.tileSize, currentLevel.tileSize);
-                    
+
                     if (playerBox.overlaps(tileBox)) {
                         hitRamp = true;
-                        
+
                         // Check if there's another ramp tile to the right (extended ramp)
                         boolean hasRampToRight = false;
                         if (col + 1 < currentLevel.width) {
                             int nextTile = currentLevel.getTile(row, col + 1);
                             hasRampToRight = (nextTile == 2);
                         }
-                        
+
                         // Check if player is at the top edge of the ramp (launching off)
                         float playerBottomY = playerY;
                         float rampTopY = worldY + currentLevel.tileSize;
                         float playerRightX = playerX + playerWidth;
                         float rampRightX = worldX + currentLevel.tileSize;
-                        
+
                         // Only launch if at the edge AND no more ramp tiles to the right
                         if (!hasRampToRight && playerRightX > rampRightX - 10 && playerBottomY >= rampTopY - 10) {
                             // Launch at angle based on horizontal speed
@@ -437,19 +458,19 @@ public class MainGame extends ApplicationAdapter {
         float playerWidth = playerTexture.getWidth() * PLAYER_SCALE;
         float playerHeight = playerTexture.getHeight() * PLAYER_SCALE;
         Rectangle playerBox = new Rectangle(playerX, playerY, playerWidth, playerHeight);
-        
+
         // Check tiles near player for better performance
         int startCol = Math.max(0, (int)(playerX / currentLevel.tileSize) - 1);
         int endCol = Math.min(currentLevel.width - 1, (int)((playerX + playerWidth) / currentLevel.tileSize) + 1);
-        
+
         for (int row = 0; row < currentLevel.height; row++) {
             for (int col = startCol; col <= endCol; col++) {
                 if (currentLevel.getTile(row, col) == 3) { // Lake tile
                     float worldX = col * currentLevel.tileSize;
                     float worldY = (currentLevel.height - row - 1) * currentLevel.tileSize;
-                    
+
                     Rectangle tileBox = new Rectangle(worldX, worldY, currentLevel.tileSize, currentLevel.tileSize);
-                    
+
                     if (playerBox.overlaps(tileBox)) {
                         // Game over - reset player to spawn
                         resetPlayer();
@@ -460,22 +481,22 @@ public class MainGame extends ApplicationAdapter {
             }
         }
     }
-    
+
     private void checkFlagCollision() {
         if (levelComplete) return;
-        
+
         float playerWidth = playerTexture.getWidth() * PLAYER_SCALE;
         float playerHeight = playerTexture.getHeight() * PLAYER_SCALE;
         Rectangle playerBox = new Rectangle(playerX, playerY, playerWidth, playerHeight);
-        
+
         for (int row = 0; row < currentLevel.height; row++) {
             for (int col = 0; col < currentLevel.width; col++) {
                 if (currentLevel.getTile(row, col) == 4) {
                     float worldX = col * currentLevel.tileSize;
                     float worldY = (currentLevel.height - row - 1) * currentLevel.tileSize;
-                    
+
                     Rectangle tileBox = new Rectangle(worldX, worldY, currentLevel.tileSize, currentLevel.tileSize);
-                    
+
                     if (playerBox.overlaps(tileBox)) {
                         levelComplete = true;
                         System.out.println("Level Complete!");
@@ -490,32 +511,32 @@ public class MainGame extends ApplicationAdapter {
         // Reset player to spawn position
         int spawnCol = (int)(currentLevel.playerSpawn.x / currentLevel.tileSize);
         int spawnRow = (int)(currentLevel.playerSpawn.y / currentLevel.tileSize);
-        
+
         playerX = spawnCol * currentLevel.tileSize;
         playerY = (currentLevel.height - spawnRow - 1) * currentLevel.tileSize;
-        
+
         // Reset physics
         velocityY = 0f;
         speedPxPerSec = 0f;
         isOnGround = false;
-        
+
         // Reset pedal tracking
         synchronized (pulseLock) {
             lastPulseTime = 0L;
             smoothedIntervalMs = 0f;
         }
     }
-    
+
     private void loadNextLevel() {
         if (currentLevelNumber >= MAX_LEVEL) {
             System.out.println("All levels completed!");
             return;
         }
-        
+
         // Increment level
         currentLevelNumber++;
         System.out.println("Loading level " + currentLevelNumber);
-        
+
         // Dispose old level cache
         if (levelFrameBuffer != null) {
             levelFrameBuffer.dispose();
@@ -524,35 +545,35 @@ public class MainGame extends ApplicationAdapter {
         if (cachedLevelTexture != null) {
             cachedLevelTexture = null;
         }
-        
+
         // Load new level
         String levelFile = "level" + currentLevelNumber + ".txt";
         currentLevel = LevelLoader.loadLevel(levelFile, 64f);
-        
+
         // Reset player to new spawn
         int spawnCol = (int)(currentLevel.playerSpawn.x / currentLevel.tileSize);
         int spawnRow = (int)(currentLevel.playerSpawn.y / currentLevel.tileSize);
-        
+
         playerX = spawnCol * currentLevel.tileSize;
         playerY = (currentLevel.height - spawnRow - 1) * currentLevel.tileSize;
-        
+
         // Reset physics and state
         velocityY = 0f;
         speedPxPerSec = 0f;
         isOnGround = false;
         levelComplete = false;
         levelCompleteTimer = 0f;
-        
+
         // Reset pedal tracking
         synchronized (pulseLock) {
             lastPulseTime = 0L;
             smoothedIntervalMs = 0f;
         }
-        
+
         // Rebuild level cache
         buildLevelCache();
     }
-    
+
     /**
      * Deve ser chamada quando um pulso de pedal for detectado (do IoT ou do teclado).
      * Thread-safe: pode ser chamada a partir de um listener de rede/serial.
