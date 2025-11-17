@@ -52,6 +52,15 @@ public class MainGame extends ApplicationAdapter {
     private float elapsedTime = 0f;
     private boolean timeOut = false;
     private boolean gameWon = false;
+    
+    // Game State
+    private enum GameState {
+        PLAYING,
+        GAME_OVER,
+        VICTORY
+    }
+    private GameState gameState = GameState.PLAYING;
+    private int selectedMenuOption = 0; // 0 = Restart, 1 = Quit
 
     // Camera viewport (fixed logical size)
     private final float VIEWPORT_WIDTH = 1280f;
@@ -145,6 +154,7 @@ public class MainGame extends ApplicationAdapter {
 
     @Override
     public void render() {
+        // Clear screen
         ScreenUtils.clear(0.15f, 0.15f, 0.2f, 1f);
 
 
@@ -157,6 +167,10 @@ public class MainGame extends ApplicationAdapter {
         }
 
         float delta = Gdx.graphics.getDeltaTime();
+        // Cap delta time to prevent physics issues when window loses focus
+        if (delta > 0.1f) {
+            delta = 0.1f;
+        }
 
         // Update timer (only if not complete and not timed out)
         if (!levelComplete && !timeOut && !gameWon) {
@@ -174,110 +188,123 @@ public class MainGame extends ApplicationAdapter {
         if (timeOut) {
             levelCompleteTimer += delta;
             if (levelCompleteTimer >= LEVEL_COMPLETE_DELAY) {
-                resetPlayer();
+                gameState = GameState.GAME_OVER;
                 timeOut = false;
-                elapsedTime = 0f;
                 levelCompleteTimer = 0f;
             }
             return; // Don't process other updates while showing timeout
         }
         
-        // Handle game won state
-        if (gameWon) {
-            return; // Freeze game, show victory message
+        // Handle game over state - show menu
+        if (gameState == GameState.GAME_OVER) {
+            handleGameOverInput();
+            // Continue to render the menu, don't return early
+        }
+        
+        // Handle game won state - show menu
+        else if (gameState == GameState.VICTORY) {
+            handleVictoryInput();
+            // Continue to render the menu, don't return early
         }
 
-        // Input: espaço simula um pulso do dispositivo
-        if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
+        // Input: espaço simula um pulso do dispositivo (only in playing state)
+        if (gameState == GameState.PLAYING && Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
             registerPedalPulse();
         }
 
         // Calcular velocidade atual com base no smoothedIntervalMs
         float currentRpm = 0f;
-        long nowMs = System.currentTimeMillis();
-        synchronized (pulseLock) {
-            // se passou tempo demais desde o último pulso, considerar que parou
-            if (lastPulseTime > 0L && (nowMs - lastPulseTime) > PULSE_TIMEOUT_MS) {
-                smoothedIntervalMs = 0f; // força o ramo de 'sem pulsos recentes'
-            }
-
-            if (smoothedIntervalMs > 0.0f) {
-                currentRpm = (60_000f / smoothedIntervalMs); // ms -> RPM
-                // mapeamento linear direto: RPM -> target speed
-                float t = currentRpm / TARGET_RPM_FOR_MAX_SPEED;
-                if (t > 1f) t = 1f;
-                if (t < 0f) t = 0f;
-                float targetSpeed = t * MAX_SPEED_PX_PER_SEC;
-
-                // Se o alvo for menor que a velocidade atual, desacelerar gradualmente
-                if (targetSpeed < speedPxPerSec) {
-                    speedPxPerSec = Math.max(targetSpeed, speedPxPerSec - DECELERATION_PX_PER_SEC2 * delta);
-                } else {
-                    // Se o alvo for maior, aplicar imediatamente (controle responsivo ao aumento de RPM)
-                    speedPxPerSec = targetSpeed;
+        
+        // Only update game physics when in PLAYING state
+        if (gameState == GameState.PLAYING) {
+            long nowMs = System.currentTimeMillis();
+            synchronized (pulseLock) {
+                // se passou tempo demais desde o último pulso, considerar que parou
+                if (lastPulseTime > 0L && (nowMs - lastPulseTime) > PULSE_TIMEOUT_MS) {
+                    smoothedIntervalMs = 0f; // força o ramo de 'sem pulsos recentes'
                 }
-            } else {
-                // sem pulsos recentes -> reduzir velocidade gradualmente (inércia)
-                speedPxPerSec = Math.max(0f, speedPxPerSec - DECELERATION_PX_PER_SEC2 * delta);
+
+                if (smoothedIntervalMs > 0.0f) {
+                    currentRpm = (60_000f / smoothedIntervalMs); // ms -> RPM
+                    // mapeamento linear direto: RPM -> target speed
+                    float t = currentRpm / TARGET_RPM_FOR_MAX_SPEED;
+                    if (t > 1f) t = 1f;
+                    if (t < 0f) t = 0f;
+                    float targetSpeed = t * MAX_SPEED_PX_PER_SEC;
+
+                    // Se o alvo for menor que a velocidade atual, desacelerar gradualmente
+                    if (targetSpeed < speedPxPerSec) {
+                        speedPxPerSec = Math.max(targetSpeed, speedPxPerSec - DECELERATION_PX_PER_SEC2 * delta);
+                    } else {
+                        // Se o alvo for maior, aplicar imediatamente (controle responsivo ao aumento de RPM)
+                        speedPxPerSec = targetSpeed;
+                    }
+                } else {
+                    // sem pulsos recentes -> reduzir velocidade gradualmente (inércia)
+                    speedPxPerSec = Math.max(0f, speedPxPerSec - DECELERATION_PX_PER_SEC2 * delta);
+                }
+            }
+
+            // Apply physics
+            velocityY += GRAVITY * delta;
+            playerY += velocityY * delta;
+
+            //speed ambiente
+            parallax.update(speedPxPerSec, delta);
+
+            // mover personagem horizontalmente
+            playerX += speedPxPerSec * delta;
+
+            // Check ground and ramp collision
+            checkGroundAndRampCollision();
+
+            // Check lake collision (game over)
+            checkLakeCollision();
+
+            // Check flag collision
+            if (!levelComplete) {
+                checkFlagCollision();
+            }
+
+            // Handle level completion and progression
+            if (levelComplete) {
+                levelCompleteTimer += delta;
+                if (levelCompleteTimer >= LEVEL_COMPLETE_DELAY) {
+                    loadNextLevel();
+                }
             }
         }
 
-        // Apply physics
-        velocityY += GRAVITY * delta;
-        playerY += velocityY * delta;
-
-        //speed ambiente
-        parallax.update(speedPxPerSec, delta);
-
-
-        // mover personagem horizontalmente
-        playerX += speedPxPerSec * delta;
-
-        // Check ground and ramp collision
-        checkGroundAndRampCollision();
-
-        // Check lake collision (game over)
-        checkLakeCollision();
-
-        // Check flag collision
-        if (!levelComplete) {
-            checkFlagCollision();
+        // Update camera to follow player (only when playing)
+        if (gameState == GameState.PLAYING) {
+            float camX = playerX + (playerTexture.getWidth() * PLAYER_SCALE) / 2;
+            float camY = Math.max(VIEWPORT_HEIGHT / 2, Math.min(playerY + (playerTexture.getHeight() * PLAYER_SCALE) / 2, (currentLevel.height * currentLevel.tileSize) - VIEWPORT_HEIGHT / 2));
+            camera.position.set(camX, camY, 0);
+            camera.update();
         }
 
-        // Handle level completion and progression
-        if (levelComplete) {
-            levelCompleteTimer += delta;
-            if (levelCompleteTimer >= LEVEL_COMPLETE_DELAY) {
-                loadNextLevel();
+        // desenho (only draw game when playing)
+        if (gameState == GameState.PLAYING) {
+            batch.setProjectionMatrix(camera.combined);
+            batch.begin();
+
+            //desenho paralaxe
+            parallax.draw(batch);
+
+            // Draw cached level (much faster than drawing individual tiles)
+            if (cachedLevelTexture != null) {
+                int levelWidth = (int)(currentLevel.width * currentLevel.tileSize);
+                int levelHeight = (int)(currentLevel.height * currentLevel.tileSize);
+                batch.draw(cachedLevelTexture, 0, 0, levelWidth, levelHeight);
             }
+
+            // Draw player (scaled down)
+            float scaledWidth = playerTexture.getWidth() * PLAYER_SCALE;
+            float scaledHeight = playerTexture.getHeight() * PLAYER_SCALE;
+            batch.draw(playerTexture, playerX, playerY, scaledWidth, scaledHeight);
+
+            batch.end();
         }
-
-        // Update camera to follow player
-        float camX = playerX + (playerTexture.getWidth() * PLAYER_SCALE) / 2;
-        float camY = Math.max(VIEWPORT_HEIGHT / 2, Math.min(playerY + (playerTexture.getHeight() * PLAYER_SCALE) / 2, (currentLevel.height * currentLevel.tileSize) - VIEWPORT_HEIGHT / 2));
-        camera.position.set(camX, camY, 0);
-        camera.update();
-
-        // desenho
-        batch.setProjectionMatrix(camera.combined);
-        batch.begin();
-
-        //desenho paralaxe
-        parallax.draw(batch);
-
-        // Draw cached level (much faster than drawing individual tiles)
-        if (cachedLevelTexture != null) {
-            int levelWidth = (int)(currentLevel.width * currentLevel.tileSize);
-            int levelHeight = (int)(currentLevel.height * currentLevel.tileSize);
-            batch.draw(cachedLevelTexture, 0, 0, levelWidth, levelHeight);
-        }
-
-        // Draw player (scaled down)
-        float scaledWidth = playerTexture.getWidth() * PLAYER_SCALE;
-        float scaledHeight = playerTexture.getHeight() * PLAYER_SCALE;
-        batch.draw(playerTexture, playerX, playerY, scaledWidth, scaledHeight);
-
-        batch.end();
 
         // Draw HUD (fixed on screen using screen coordinates) - drawn LAST to be on top
         OrthographicCamera hudCamera = new OrthographicCamera();
@@ -286,38 +313,64 @@ public class MainGame extends ApplicationAdapter {
         batch.setProjectionMatrix(hudCamera.combined);
         batch.begin();
 
-        // HUD
-        String hud = String.format("RPM: %.1f  Speed: %.0f px/s  Y-Vel: %.0f (SPACE=Pedal)", currentRpm, speedPxPerSec, velocityY);
-        font.draw(batch, hud, 10, Gdx.graphics.getHeight() - 10);
-        
-        // Timer display
-        if (currentLevel.timeLimit > 0) {
-            float remainingTime = currentLevel.timeLimit - elapsedTime;
-            if (remainingTime < 0) remainingTime = 0;
-            int minutes = (int)(remainingTime / 60);
-            int seconds = (int)(remainingTime % 60);
-            String timerColor = remainingTime < 10 ? "TIME: " : "TIME: ";
-            String timerText = String.format("%s%d:%02d", timerColor, minutes, seconds);
-            font.draw(batch, timerText, 10, Gdx.graphics.getHeight() - 40);
+        // Only show game HUD when playing
+        if (gameState == GameState.PLAYING) {
+            // HUD
+            String hud = String.format("RPM: %.1f  Speed: %.0f px/s  Y-Vel: %.0f (SPACE=Pedal)", currentRpm, speedPxPerSec, velocityY);
+            font.draw(batch, hud, 10, Gdx.graphics.getHeight() - 10);
+            
+            // Timer display
+            if (currentLevel.timeLimit > 0) {
+                float remainingTime = currentLevel.timeLimit - elapsedTime;
+                if (remainingTime < 0) remainingTime = 0;
+                int minutes = (int)(remainingTime / 60);
+                int seconds = (int)(remainingTime % 60);
+                String timerColor = remainingTime < 10 ? "TIME: " : "TIME: ";
+                String timerText = String.format("%s%d:%02d", timerColor, minutes, seconds);
+                font.draw(batch, timerText, 10, Gdx.graphics.getHeight() - 40);
+            }
+            
+            // Level info
+            String levelInfo = String.format("Level %d/%d", currentLevelNumber, MAX_LEVEL);
+            font.draw(batch, levelInfo, 10, Gdx.graphics.getHeight() - 70);
+
+            if (timeOut) {
+                font.getData().setScale(3.0f);
+                font.draw(batch, "TIME'S UP!", Gdx.graphics.getWidth() / 2 - 150, Gdx.graphics.getHeight() / 2);
+                font.getData().setScale(1.5f);
+                int timeLeft = (int)(LEVEL_COMPLETE_DELAY - levelCompleteTimer);
+                font.draw(batch, "Resetting in " + (timeLeft + 1) + "...", Gdx.graphics.getWidth() / 2 - 100, Gdx.graphics.getHeight() / 2 - 50);
+                font.getData().setScale(1.5f);
+            } else if (levelComplete) {
+                font.getData().setScale(3.0f);
+                String message = currentLevelNumber >= MAX_LEVEL ? "LEVEL COMPLETE!" : "LEVEL COMPLETE!";
+                font.draw(batch, message, Gdx.graphics.getWidth() / 2 - 250, Gdx.graphics.getHeight() / 2);
+
+                if (currentLevelNumber < MAX_LEVEL) {
+                    font.getData().setScale(1.5f);
+                    int timeLeft = (int)(LEVEL_COMPLETE_DELAY - levelCompleteTimer);
+                    font.draw(batch, "Next level in " + (timeLeft + 1) + "...", Gdx.graphics.getWidth() / 2 - 100, Gdx.graphics.getHeight() / 2 - 50);
+                }
+                font.getData().setScale(1.5f);
+            }
         }
         
-        // Level info
-        String levelInfo = String.format("Level %d/%d", currentLevelNumber, MAX_LEVEL);
-        font.draw(batch, levelInfo, 10, Gdx.graphics.getHeight() - 70);
-
-        if (timeOut) {
+        // Draw menus over everything
+        if (gameState == GameState.GAME_OVER) {
+            renderGameOverMenu();
+        } else if (gameState == GameState.VICTORY) {
+            renderVictoryMenu();
+        }        if (timeOut) {
             font.getData().setScale(3.0f);
             font.draw(batch, "TIME'S UP!", Gdx.graphics.getWidth() / 2 - 150, Gdx.graphics.getHeight() / 2);
             font.getData().setScale(1.5f);
             int timeLeft = (int)(LEVEL_COMPLETE_DELAY - levelCompleteTimer);
             font.draw(batch, "Resetting in " + (timeLeft + 1) + "...", Gdx.graphics.getWidth() / 2 - 100, Gdx.graphics.getHeight() / 2 - 50);
             font.getData().setScale(1.5f);
-        } else if (gameWon) {
-            font.getData().setScale(3.0f);
-            font.draw(batch, "YOU WIN!", Gdx.graphics.getWidth() / 2 - 120, Gdx.graphics.getHeight() / 2 + 50);
-            font.getData().setScale(2.0f);
-            font.draw(batch, "All levels completed!", Gdx.graphics.getWidth() / 2 - 180, Gdx.graphics.getHeight() / 2);
-            font.getData().setScale(1.5f);
+        } else if (gameState == GameState.GAME_OVER) {
+            renderGameOverMenu();
+        } else if (gameState == GameState.VICTORY) {
+            renderVictoryMenu();
         } else if (levelComplete) {
             font.getData().setScale(3.0f);
             String message = currentLevelNumber >= MAX_LEVEL ? "LEVEL COMPLETE!" : "LEVEL COMPLETE!";
@@ -493,22 +546,29 @@ public class MainGame extends ApplicationAdapter {
                             hasRampToRight = (nextTile == 2);
                         }
 
-                        // Check if player is at the top edge of the ramp (launching off)
+                        // Calculate player's position relative to the ramp tile
+                        float relativeX = playerX - worldX; // How far into the ramp tile horizontally
+                        
+                        // Ramp slopes from bottom-left to top-right at 45 degrees
+                        // Calculate the ramp height at the player's X position
+                        float rampHeightAtPlayerX = (relativeX / currentLevel.tileSize) * currentLevel.tileSize;
+                        float rampSurfaceY = worldY + rampHeightAtPlayerX;
+                        
                         float playerBottomY = playerY;
-                        float rampTopY = worldY + currentLevel.tileSize;
                         float playerRightX = playerX + playerWidth;
                         float rampRightX = worldX + currentLevel.tileSize;
 
-                        // Only launch if at the edge AND no more ramp tiles to the right
-                        if (!hasRampToRight && playerRightX > rampRightX - 10 && playerBottomY >= rampTopY - 10) {
+                        // Check if player is at the top-right edge of the ramp (launching off)
+                        if (!hasRampToRight && playerRightX > rampRightX - 10 && playerBottomY >= worldY + currentLevel.tileSize - 10) {
                             // Launch at angle based on horizontal speed
                             double angleRad = Math.toRadians(RAMP_LAUNCH_ANGLE);
                             velocityY = (float)(speedPxPerSec * Math.sin(angleRad));
                             isOnGround = false;
                         } else {
-                            // Player is on the ramp surface - keep them grounded
-                            if (velocityY <= 0 && playerY < worldY + currentLevel.tileSize) {
-                                playerY = worldY + currentLevel.tileSize;
+                            // Player is on the ramp surface - follow the slope
+                            if (velocityY <= 0 && playerBottomY < rampSurfaceY + 5) {
+                                // Place player on the sloped surface
+                                playerY = rampSurfaceY;
                                 velocityY = 0;
                                 isOnGround = true;
                             }
@@ -537,9 +597,9 @@ public class MainGame extends ApplicationAdapter {
                     Rectangle tileBox = new Rectangle(worldX, worldY, currentLevel.tileSize, currentLevel.tileSize);
 
                     if (playerBox.overlaps(tileBox)) {
-                        // Game over - reset player to spawn
-                        resetPlayer();
-                        System.out.println("Hit the lake! Resetting...");
+                        // Game over - hit the lake
+                        gameState = GameState.GAME_OVER;
+                        System.out.println("Hit the lake! Game Over!");
                         return;
                     }
                 }
@@ -568,6 +628,7 @@ public class MainGame extends ApplicationAdapter {
                         // Check if this is the last level - if so, player wins!
                         if (currentLevelNumber >= MAX_LEVEL) {
                             gameWon = true;
+                            gameState = GameState.VICTORY;
                             System.out.println("YOU WIN! All levels completed!");
                         } else {
                             System.out.println("Level Complete!");
@@ -673,5 +734,141 @@ public class MainGame extends ApplicationAdapter {
             }
             lastPulseTime = now;
         }
+    }
+    
+    private void renderGameOverMenu() {
+        int centerX = Gdx.graphics.getWidth() / 2;
+        int centerY = Gdx.graphics.getHeight() / 2;
+        
+        // Title
+        font.getData().setScale(3.5f);
+        font.draw(batch, "GAME OVER", centerX - 180, centerY + 100);
+        
+        // Subtitle
+        font.getData().setScale(1.8f);
+        font.draw(batch, "Time's Up!", centerX - 80, centerY + 40);
+        
+        // Menu options
+        font.getData().setScale(2.0f);
+        String restartText = selectedMenuOption == 0 ? "> RESTART LEVEL" : "  RESTART LEVEL";
+        String quitText = selectedMenuOption == 1 ? "> QUIT" : "  QUIT";
+        
+        font.draw(batch, restartText, centerX - 150, centerY - 20);
+        font.draw(batch, quitText, centerX - 150, centerY - 60);
+        
+        // Instructions
+        font.getData().setScale(1.2f);
+        font.draw(batch, "Use UP/DOWN arrows and ENTER", centerX - 180, centerY - 120);
+        
+        font.getData().setScale(1.5f);
+    }
+    
+    private void renderVictoryMenu() {
+        int centerX = Gdx.graphics.getWidth() / 2;
+        int centerY = Gdx.graphics.getHeight() / 2;
+        
+        // Title
+        font.getData().setScale(4.0f);
+        font.draw(batch, "YOU WIN!", centerX - 150, centerY + 120);
+        
+        // Subtitle
+        font.getData().setScale(2.0f);
+        font.draw(batch, "All Levels Completed!", centerX - 180, centerY + 60);
+        
+        // Menu options
+        font.getData().setScale(2.0f);
+        String restartText = selectedMenuOption == 0 ? "> PLAY AGAIN" : "  PLAY AGAIN";
+        String quitText = selectedMenuOption == 1 ? "> QUIT" : "  QUIT";
+        
+        font.draw(batch, restartText, centerX - 150, centerY - 20);
+        font.draw(batch, quitText, centerX - 150, centerY - 60);
+        
+        // Instructions
+        font.getData().setScale(1.2f);
+        font.draw(batch, "Use UP/DOWN arrows and ENTER", centerX - 180, centerY - 120);
+        
+        font.getData().setScale(1.5f);
+    }
+    
+    private void handleGameOverInput() {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.UP)) {
+            selectedMenuOption = 0;
+        } else if (Gdx.input.isKeyJustPressed(Input.Keys.DOWN)) {
+            selectedMenuOption = 1;
+        } else if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
+            if (selectedMenuOption == 0) {
+                // Restart current level
+                restartCurrentLevel();
+            } else {
+                // Quit game
+                Gdx.app.exit();
+            }
+        }
+    }
+    
+    private void handleVictoryInput() {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.UP)) {
+            selectedMenuOption = 0;
+        } else if (Gdx.input.isKeyJustPressed(Input.Keys.DOWN)) {
+            selectedMenuOption = 1;
+        } else if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
+            if (selectedMenuOption == 0) {
+                // Restart from level 1
+                restartGame();
+            } else {
+                // Quit game
+                Gdx.app.exit();
+            }
+        }
+    }
+    
+    private void restartCurrentLevel() {
+        // Reset to current level
+        resetPlayer();
+        elapsedTime = 0f;
+        gameState = GameState.PLAYING;
+        selectedMenuOption = 0;
+    }
+    
+    private void restartGame() {
+        // Dispose old level cache
+        if (levelFrameBuffer != null) {
+            levelFrameBuffer.dispose();
+            levelFrameBuffer = null;
+        }
+        if (cachedLevelTexture != null) {
+            cachedLevelTexture = null;
+        }
+        
+        // Reset to level 1
+        currentLevelNumber = 1;
+        String levelFile = "level" + currentLevelNumber + ".txt";
+        currentLevel = LevelLoader.loadLevel(levelFile, 64f);
+        
+        // Reset player
+        int spawnCol = (int)(currentLevel.playerSpawn.x / currentLevel.tileSize);
+        int spawnRow = (int)(currentLevel.playerSpawn.y / currentLevel.tileSize);
+        playerX = spawnCol * currentLevel.tileSize;
+        playerY = (currentLevel.height - spawnRow) * currentLevel.tileSize;
+        
+        // Reset all state
+        velocityY = 0f;
+        speedPxPerSec = 0f;
+        isOnGround = false;
+        levelComplete = false;
+        levelCompleteTimer = 0f;
+        elapsedTime = 0f;
+        timeOut = false;
+        gameWon = false;
+        gameState = GameState.PLAYING;
+        selectedMenuOption = 0;
+        
+        synchronized (pulseLock) {
+            lastPulseTime = 0L;
+            smoothedIntervalMs = 0f;
+        }
+        
+        // Rebuild level cache
+        buildLevelCache();
     }
 }
