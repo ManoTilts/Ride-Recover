@@ -22,11 +22,24 @@ public class LevelLoader {
         String content = file.readString();
         String[] lines = content.split("\n");
         
+        float timeLimit = 0f; // Default: no time limit
+        
         List<String> validLines = new ArrayList<>();
         for (String line : lines) {
             String trimmed = line.trim();
             if (!trimmed.isEmpty() && !trimmed.startsWith("#")) {
-                validLines.add(trimmed);
+                // Check for time parameter (format: "time: 60")
+                if (trimmed.toLowerCase().startsWith("time:")) {
+                    try {
+                        String timeValue = trimmed.substring(5).trim();
+                        timeLimit = Float.parseFloat(timeValue);
+                        System.out.println("Level time limit: " + timeLimit + " seconds");
+                    } catch (NumberFormatException | IndexOutOfBoundsException e) {
+                        System.err.println("Invalid time format: " + trimmed);
+                    }
+                } else {
+                    validLines.add(trimmed);
+                }
             }
         }
 
@@ -56,6 +69,7 @@ public class LevelLoader {
         }
 
         LevelData level = new LevelData(width, height, tileSize);
+        level.timeLimit = timeLimit; // Set the time limit
         
         boolean foundSpawn = false;
         for (int row = 0; row < height; row++) {

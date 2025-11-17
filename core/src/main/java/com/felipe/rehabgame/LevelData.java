@@ -18,6 +18,7 @@ public class LevelData {
     public int height;
     public Vector2 playerSpawn;
     public float tileSize;
+    public float timeLimit; // Time limit in seconds (0 = no limit)
 
     public LevelData(int width, int height, float tileSize) {
         this.width = width;
@@ -25,6 +26,7 @@ public class LevelData {
         this.tileSize = tileSize;
         this.tiles = new int[height][width];
         this.playerSpawn = new Vector2(0, 0);
+        this.timeLimit = 0f; // Default: no time limit
     }
 
     public int getTile(int row, int col) {

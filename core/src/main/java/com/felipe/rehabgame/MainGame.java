@@ -47,6 +47,11 @@ public class MainGame extends ApplicationAdapter {
     private final float LEVEL_COMPLETE_DELAY = 2.0f; // 2 seconds delay before next level
     private boolean isLoading = true;
     private float loadingProgress = 0f;
+    
+    // Timer System
+    private float elapsedTime = 0f;
+    private boolean timeOut = false;
+    private boolean gameWon = false;
 
     // Camera viewport (fixed logical size)
     private final float VIEWPORT_WIDTH = 1280f;
@@ -123,8 +128,8 @@ public class MainGame extends ApplicationAdapter {
         int spawnRow = (int)(currentLevel.playerSpawn.y / currentLevel.tileSize);
 
         playerX = spawnCol * currentLevel.tileSize;
-        // Y coordinate: bottom of level is 0, so row 0 = top, row (height-1) = bottom
-        playerY = (currentLevel.height - spawnRow - 1) * currentLevel.tileSize;
+        // Y coordinate: Place player ON TOP of the spawn tile
+        playerY = (currentLevel.height - spawnRow) * currentLevel.tileSize;
 
         System.out.println("Player texture size: " + playerTexture.getWidth() + "x" + playerTexture.getHeight());
         System.out.println("Player scaled size: " + (playerTexture.getWidth() * PLAYER_SCALE) + "x" + (playerTexture.getHeight() * PLAYER_SCALE));
@@ -152,6 +157,35 @@ public class MainGame extends ApplicationAdapter {
         }
 
         float delta = Gdx.graphics.getDeltaTime();
+
+        // Update timer (only if not complete and not timed out)
+        if (!levelComplete && !timeOut && !gameWon) {
+            elapsedTime += delta;
+            
+            // Check if time limit exceeded
+            if (currentLevel.timeLimit > 0 && elapsedTime >= currentLevel.timeLimit) {
+                timeOut = true;
+                System.out.println("Time's up! Resetting level...");
+                return; // Skip rest of update to freeze game state
+            }
+        }
+        
+        // Handle timeout - wait a moment then reset
+        if (timeOut) {
+            levelCompleteTimer += delta;
+            if (levelCompleteTimer >= LEVEL_COMPLETE_DELAY) {
+                resetPlayer();
+                timeOut = false;
+                elapsedTime = 0f;
+                levelCompleteTimer = 0f;
+            }
+            return; // Don't process other updates while showing timeout
+        }
+        
+        // Handle game won state
+        if (gameWon) {
+            return; // Freeze game, show victory message
+        }
 
         // Input: espaço simula um pulso do dispositivo
         if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
@@ -245,17 +279,48 @@ public class MainGame extends ApplicationAdapter {
 
         batch.end();
 
-        // Draw HUD (fixed on screen using screen coordinates)
-        batch.setProjectionMatrix(batch.getProjectionMatrix().idt());
+        // Draw HUD (fixed on screen using screen coordinates) - drawn LAST to be on top
+        OrthographicCamera hudCamera = new OrthographicCamera();
+        hudCamera.setToOrtho(false, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        hudCamera.update();
+        batch.setProjectionMatrix(hudCamera.combined);
         batch.begin();
 
         // HUD
         String hud = String.format("RPM: %.1f  Speed: %.0f px/s  Y-Vel: %.0f (SPACE=Pedal)", currentRpm, speedPxPerSec, velocityY);
         font.draw(batch, hud, 10, Gdx.graphics.getHeight() - 10);
+        
+        // Timer display
+        if (currentLevel.timeLimit > 0) {
+            float remainingTime = currentLevel.timeLimit - elapsedTime;
+            if (remainingTime < 0) remainingTime = 0;
+            int minutes = (int)(remainingTime / 60);
+            int seconds = (int)(remainingTime % 60);
+            String timerColor = remainingTime < 10 ? "TIME: " : "TIME: ";
+            String timerText = String.format("%s%d:%02d", timerColor, minutes, seconds);
+            font.draw(batch, timerText, 10, Gdx.graphics.getHeight() - 40);
+        }
+        
+        // Level info
+        String levelInfo = String.format("Level %d/%d", currentLevelNumber, MAX_LEVEL);
+        font.draw(batch, levelInfo, 10, Gdx.graphics.getHeight() - 70);
 
-        if (levelComplete) {
+        if (timeOut) {
             font.getData().setScale(3.0f);
-            String message = currentLevelNumber >= MAX_LEVEL ? "ALL LEVELS COMPLETE!" : "LEVEL COMPLETE!";
+            font.draw(batch, "TIME'S UP!", Gdx.graphics.getWidth() / 2 - 150, Gdx.graphics.getHeight() / 2);
+            font.getData().setScale(1.5f);
+            int timeLeft = (int)(LEVEL_COMPLETE_DELAY - levelCompleteTimer);
+            font.draw(batch, "Resetting in " + (timeLeft + 1) + "...", Gdx.graphics.getWidth() / 2 - 100, Gdx.graphics.getHeight() / 2 - 50);
+            font.getData().setScale(1.5f);
+        } else if (gameWon) {
+            font.getData().setScale(3.0f);
+            font.draw(batch, "YOU WIN!", Gdx.graphics.getWidth() / 2 - 120, Gdx.graphics.getHeight() / 2 + 50);
+            font.getData().setScale(2.0f);
+            font.draw(batch, "All levels completed!", Gdx.graphics.getWidth() / 2 - 180, Gdx.graphics.getHeight() / 2);
+            font.getData().setScale(1.5f);
+        } else if (levelComplete) {
+            font.getData().setScale(3.0f);
+            String message = currentLevelNumber >= MAX_LEVEL ? "LEVEL COMPLETE!" : "LEVEL COMPLETE!";
             font.draw(batch, message, Gdx.graphics.getWidth() / 2 - 250, Gdx.graphics.getHeight() / 2);
 
             if (currentLevelNumber < MAX_LEVEL) {
@@ -499,7 +564,14 @@ public class MainGame extends ApplicationAdapter {
 
                     if (playerBox.overlaps(tileBox)) {
                         levelComplete = true;
-                        System.out.println("Level Complete!");
+                        
+                        // Check if this is the last level - if so, player wins!
+                        if (currentLevelNumber >= MAX_LEVEL) {
+                            gameWon = true;
+                            System.out.println("YOU WIN! All levels completed!");
+                        } else {
+                            System.out.println("Level Complete!");
+                        }
                         return;
                     }
                 }
@@ -513,12 +585,16 @@ public class MainGame extends ApplicationAdapter {
         int spawnRow = (int)(currentLevel.playerSpawn.y / currentLevel.tileSize);
 
         playerX = spawnCol * currentLevel.tileSize;
-        playerY = (currentLevel.height - spawnRow - 1) * currentLevel.tileSize;
+        // Place player ON TOP of the spawn tile
+        playerY = (currentLevel.height - spawnRow) * currentLevel.tileSize;
 
         // Reset physics
         velocityY = 0f;
         speedPxPerSec = 0f;
         isOnGround = false;
+        
+        // Reset timer
+        elapsedTime = 0f;
 
         // Reset pedal tracking
         synchronized (pulseLock) {
@@ -555,7 +631,8 @@ public class MainGame extends ApplicationAdapter {
         int spawnRow = (int)(currentLevel.playerSpawn.y / currentLevel.tileSize);
 
         playerX = spawnCol * currentLevel.tileSize;
-        playerY = (currentLevel.height - spawnRow - 1) * currentLevel.tileSize;
+        // Place player ON TOP of the spawn tile
+        playerY = (currentLevel.height - spawnRow) * currentLevel.tileSize;
 
         // Reset physics and state
         velocityY = 0f;
@@ -563,6 +640,10 @@ public class MainGame extends ApplicationAdapter {
         isOnGround = false;
         levelComplete = false;
         levelCompleteTimer = 0f;
+        
+        // Reset timer
+        elapsedTime = 0f;
+        timeOut = false;
 
         // Reset pedal tracking
         synchronized (pulseLock) {
