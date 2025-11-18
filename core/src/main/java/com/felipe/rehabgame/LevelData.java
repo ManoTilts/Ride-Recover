@@ -3,14 +3,14 @@ package com.felipe.rehabgame;
 import com.badlogic.gdx.math.Vector2;
 
 /**
- * Represents a tile-based level loaded from a text file.
- * Each number represents a different tile type:
- * 0 = nothing (empty)
- * 1 = floor (grass.png)
- * 2 = ramp (ramp.png)
- * 3 = water (lake.png - obstacle)
- * 4 = flag (finish line)
- * 5 = player spawn point
+ * Representa um nível baseado em tiles carregado a partir de um arquivo de texto.
+ * Cada número representa um tipo diferente de tile:
+ * 0 = nada (vazio)
+ * 1 = chão (grass.png)
+ * 2 = rampa (ramp.png)
+ * 3 = água (lake.png – obstáculo)
+ * 4 = bandeira (linha de chegada)
+ * 5 = ponto de spawn do jogador
  */
 public class LevelData {
     public int[][] tiles;
@@ -18,7 +18,7 @@ public class LevelData {
     public int height;
     public Vector2 playerSpawn;
     public float tileSize;
-    public float timeLimit; // Time limit in seconds (0 = no limit)
+    public float timeLimit; // Limite de tempo em segundos (0 = sem limite)
 
     public LevelData(int width, int height, float tileSize) {
         this.width = width;
@@ -26,7 +26,7 @@ public class LevelData {
         this.tileSize = tileSize;
         this.tiles = new int[height][width];
         this.playerSpawn = new Vector2(0, 0);
-        this.timeLimit = 0f; // Default: no time limit
+        this.timeLimit = 0f; // Padrão: sem limite de tempo
     }
 
     public int getTile(int row, int col) {
@@ -43,8 +43,8 @@ public class LevelData {
     }
 
     /**
-     * Converts grid coordinates to world coordinates (grid space, not screen space).
-     * Note: Y coordinate inversion for screen rendering happens in MainGame.
+     * Converte coordenadas da grade para coordenadas do mundo (espaço da grade, não da tela).
+     * Observação: a inversão do eixo Y para renderização na tela acontece em MainGame.
      */
     public Vector2 gridToWorld(int row, int col) {
         return new Vector2(col * tileSize, row * tileSize);
