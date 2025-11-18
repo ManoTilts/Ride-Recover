@@ -56,6 +56,7 @@ public class MainGame extends ApplicationAdapter {
     // Game State
     private enum GameState {
         PLAYING,
+        PAUSED,
         GAME_OVER,
         VICTORY
     }
@@ -83,7 +84,7 @@ public class MainGame extends ApplicationAdapter {
     private boolean isOnGround = false;
 
     // Player rendering
-    private final float PLAYER_SCALE = 0.08f; // Scale down the player texture to match tile size (~64px)
+    private final float PLAYER_SCALE = 0.18f; // Scale down the player texture to match tile size (~64px)
 
     @Override
     public void create() {
@@ -100,7 +101,7 @@ public class MainGame extends ApplicationAdapter {
 
         // Load level from text file
         String levelFile = "level" + currentLevelNumber + ".txt";
-        currentLevel = LevelLoader.loadLevel(levelFile, 64f);
+        currentLevel = LevelLoader.loadLevel(levelFile, 96f);
         loadingProgress = 0.3f;
 
         // Parallax: inicialize após carregar currentLevel
@@ -215,9 +216,19 @@ public class MainGame extends ApplicationAdapter {
         else if (gameState == GameState.VICTORY) {
             handleVictoryInput();
             // Continue to render the menu, don't return early
+        } else if (gameState == GameState.PAUSED) {
+            handlePauseMenuInput();
         }
 
         // Input: espaço simula um pulso do dispositivo (only in playing state)
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
+            if (gameState == GameState.PLAYING) {
+                gameState = GameState.PAUSED;
+                selectedMenuOption = 0; // Reset menu selection
+            } else if (gameState == GameState.PAUSED) {
+                gameState = GameState.PLAYING;
+            }
+        }
         if (gameState == GameState.PLAYING && Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
             registerPedalPulse();
         }
@@ -370,20 +381,24 @@ public class MainGame extends ApplicationAdapter {
             renderGameOverMenu();
         } else if (gameState == GameState.VICTORY) {
             renderVictoryMenu();
-        }        if (timeOut) {
+        } else if (gameState == GameState.PAUSED) {
+            renderPauseMenu();
+        }
+        
+        if (timeOut) {
             font.getData().setScale(3.0f);
             font.draw(batch, "TIME'S UP!", Gdx.graphics.getWidth() / 2 - 150, Gdx.graphics.getHeight() / 2);
             font.getData().setScale(1.5f);
             int timeLeft = (int)(LEVEL_COMPLETE_DELAY - levelCompleteTimer);
             font.draw(batch, "Resetting in " + (timeLeft + 1) + "...", Gdx.graphics.getWidth() / 2 - 100, Gdx.graphics.getHeight() / 2 - 50);
             font.getData().setScale(1.5f);
-        } else if (gameState == GameState.GAME_OVER) {
-            renderGameOverMenu();
-        } else if (gameState == GameState.VICTORY) {
-            renderVictoryMenu();
+        } else if (levelComplete && currentLevelNumber >= MAX_LEVEL) {
+             // This case is handled by VICTORY state, but as a fallback
+            font.getData().setScale(3.0f);
+            font.draw(batch, "YOU WIN!", Gdx.graphics.getWidth() / 2 - 250, Gdx.graphics.getHeight() / 2);
         } else if (levelComplete) {
             font.getData().setScale(3.0f);
-            String message = currentLevelNumber >= MAX_LEVEL ? "LEVEL COMPLETE!" : "LEVEL COMPLETE!";
+            String message = "LEVEL COMPLETE!";
             font.draw(batch, message, Gdx.graphics.getWidth() / 2 - 250, Gdx.graphics.getHeight() / 2);
 
             if (currentLevelNumber < MAX_LEVEL) {
@@ -486,7 +501,6 @@ public class MainGame extends ApplicationAdapter {
 
     private void checkGroundAndRampCollision() {
         float playerWidth = playerTexture.getWidth() * PLAYER_SCALE;
-        float playerHeight = playerTexture.getHeight() * PLAYER_SCALE;
     
         // Find the highest ground/ramp position under the player
         float highestY = -1;
@@ -772,6 +786,50 @@ public class MainGame extends ApplicationAdapter {
             if (selectedMenuOption == 0) {
                 // Restart from level 1
                 restartGame();
+            } else {
+                // Quit game
+                Gdx.app.exit();
+            }
+        }
+    }
+    
+    private void renderPauseMenu() {
+        int centerX = Gdx.graphics.getWidth() / 2;
+        int centerY = Gdx.graphics.getHeight() / 2;
+        
+        // Title
+        font.getData().setScale(3.5f);
+        font.draw(batch, "PAUSED", centerX - 100, centerY + 100);
+        
+        // Menu options
+        font.getData().setScale(2.0f);
+        String resumeText = selectedMenuOption == 0 ? "> RESUME" : "  RESUME";
+        String restartText = selectedMenuOption == 1 ? "> RESTART LEVEL" : "  RESTART LEVEL";
+        String quitText = selectedMenuOption == 2 ? "> QUIT" : "  QUIT";
+        
+        font.draw(batch, resumeText, centerX - 150, centerY - 20);
+        font.draw(batch, restartText, centerX - 150, centerY - 60);
+        font.draw(batch, quitText, centerX - 150, centerY - 100);
+        
+        // Instructions
+        font.getData().setScale(1.2f);
+        font.draw(batch, "Use UP/DOWN arrows and ENTER", centerX - 180, centerY - 160);
+        
+        font.getData().setScale(1.5f);
+    }
+    
+    private void handlePauseMenuInput() {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.UP)) {
+            selectedMenuOption = (selectedMenuOption + 2) % 3; // Cycle up
+        } else if (Gdx.input.isKeyJustPressed(Input.Keys.DOWN)) {
+            selectedMenuOption = (selectedMenuOption + 1) % 3; // Cycle down
+        } else if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
+            if (selectedMenuOption == 0) {
+                // Resume game
+                gameState = GameState.PLAYING;
+            } else if (selectedMenuOption == 1) {
+                // Restart Level
+                restartCurrentLevel();
             } else {
                 // Quit game
                 Gdx.app.exit();
