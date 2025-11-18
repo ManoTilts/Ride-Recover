@@ -78,7 +78,7 @@ public class MainGame extends ApplicationAdapter {
     // Physics
     private float velocityY = 0f;
     private final float GRAVITY = -980f; // pixels/s^2
-    private final float RAMP_LAUNCH_ANGLE = 45f; // Degrees - natural ramp angle for launch
+    private final float RAMP_LAUNCH_VELOCITY_FACTOR = 0.5f; // Multiplier for launch speed
     @SuppressWarnings("unused")
     private boolean isOnGround = false;
 
@@ -106,11 +106,21 @@ public class MainGame extends ApplicationAdapter {
         // Parallax: inicialize após carregar currentLevel
         parallax = new ParallaxBackground(camera);
 
-        // Fundo distante: estica verticalmente para sempre cobrir a tela (evita buracos)
-        parallax.addLayer(new Texture("background.png"), 0.2f, true, false);
-
-        // Árvore
-        parallax.addLayer(new Texture("tree.png"), 0.5f, false, false);
+        // Add background layers from back (5) to front (1)
+        // Layer 5 - backmost layer (slowest)
+        parallax.addLayer(new Texture("Background/Background layers_layer 5.png"), 0.1f, true, false);
+        
+        // Layer 4
+        parallax.addLayer(new Texture("Background/Background layers_layer 4.png"), 0.2f, true, false);
+        
+        // Layer 3
+        parallax.addLayer(new Texture("Background/Background layers_layer 3.png"), 0.35f, true, false);
+        
+        // Layer 2
+        parallax.addLayer(new Texture("Background/Background layers_layer 2.png"), 0.5f, true, false);
+        
+        // Layer 1 - frontmost layer (fastest)
+        parallax.addLayer(new Texture("Background/Background layers_layer 1.png"), 0.7f, true, false);
 
 
         // Load tile textures from assets folder
@@ -477,105 +487,52 @@ public class MainGame extends ApplicationAdapter {
     private void checkGroundAndRampCollision() {
         float playerWidth = playerTexture.getWidth() * PLAYER_SCALE;
         float playerHeight = playerTexture.getHeight() * PLAYER_SCALE;
-
-        Rectangle playerBox = new Rectangle(playerX, playerY, playerWidth, playerHeight);
-        isOnGround = false;
-        boolean hitRamp = false;
-
-        // Check tiles near player for better performance
-        int startCol = Math.max(0, (int)(playerX / currentLevel.tileSize) - 1);
-        int endCol = Math.min(currentLevel.width - 1, (int)((playerX + playerWidth) / currentLevel.tileSize) + 1);
-
+    
+        // Find the highest ground/ramp position under the player
+        float highestY = -1;
+        boolean onRamp = false;
+    
+        int startCol = Math.max(0, (int)(playerX / currentLevel.tileSize));
+        int endCol = Math.min(currentLevel.width - 1, (int)((playerX + playerWidth) / currentLevel.tileSize));
+    
         for (int row = 0; row < currentLevel.height; row++) {
             for (int col = startCol; col <= endCol; col++) {
                 int tile = currentLevel.getTile(row, col);
-
-                // Check floor (grass) - acts as solid barrier
-                if (tile == 1) {
-                    float worldX = col * currentLevel.tileSize;
-                    float worldY = (currentLevel.height - row - 1) * currentLevel.tileSize;
-
-                    Rectangle tileBox = new Rectangle(worldX, worldY, currentLevel.tileSize, currentLevel.tileSize);
-
-                    if (playerBox.overlaps(tileBox)) {
-                        // Calculate overlap on each axis
-                        float overlapX = Math.min(playerX + playerWidth, worldX + currentLevel.tileSize) - Math.max(playerX, worldX);
-                        float overlapY = Math.min(playerY + playerHeight, worldY + currentLevel.tileSize) - Math.max(playerY, worldY);
-
-                        // Determine collision direction based on smallest overlap and velocity
-                        if (overlapY < overlapX) {
-                            // Vertical collision (top or bottom)
-                            if (velocityY <= 0 && playerY < worldY + currentLevel.tileSize) {
-                                // Coming from above - land on top
-                                playerY = worldY + currentLevel.tileSize;
-                                velocityY = 0;
-                                isOnGround = true;
-                            } else if (velocityY > 0 && playerY + playerHeight > worldY) {
-                                // Coming from below - hit bottom
-                                playerY = worldY - playerHeight;
-                                velocityY = 0;
-                            }
-                        } else {
-                            // Horizontal collision (left or right) - act as wall
-                            if (playerX + playerWidth > worldX && playerX < worldX) {
-                                // Hitting from left - push player back
-                                playerX = worldX - playerWidth;
-                                speedPxPerSec = 0; // Stop horizontal movement
-                            } else if (playerX < worldX + currentLevel.tileSize && playerX + playerWidth > worldX + currentLevel.tileSize) {
-                                // Hitting from right - push player forward
-                                playerX = worldX + currentLevel.tileSize;
-                                speedPxPerSec = 0; // Stop horizontal movement
-                            }
-                        }
+                float worldX = col * currentLevel.tileSize;
+                float worldY = (currentLevel.height - row - 1) * currentLevel.tileSize;
+    
+                if (tile == 1) { // Grass
+                    if (playerX + playerWidth > worldX && playerX < worldX + currentLevel.tileSize) {
+                        highestY = Math.max(highestY, worldY + currentLevel.tileSize);
                     }
-                }
-                // Check ramp - acts like a slope that redirects velocity
-                else if (tile == 2 && !hitRamp) {
-                    float worldX = col * currentLevel.tileSize;
-                    float worldY = (currentLevel.height - row - 1) * currentLevel.tileSize;
-
-                    Rectangle tileBox = new Rectangle(worldX, worldY, currentLevel.tileSize, currentLevel.tileSize);
-
-                    if (playerBox.overlaps(tileBox)) {
-                        hitRamp = true;
-
-                        // Check if there's another ramp tile to the right (extended ramp)
-                        boolean hasRampToRight = false;
-                        if (col + 1 < currentLevel.width) {
-                            int nextTile = currentLevel.getTile(row, col + 1);
-                            hasRampToRight = (nextTile == 2);
-                        }
-
-                        // Calculate player's position relative to the ramp tile
-                        float relativeX = playerX - worldX; // How far into the ramp tile horizontally
-                        
-                        // Ramp slopes from bottom-left to top-right at 45 degrees
-                        // Calculate the ramp height at the player's X position
-                        float rampHeightAtPlayerX = (relativeX / currentLevel.tileSize) * currentLevel.tileSize;
-                        float rampSurfaceY = worldY + rampHeightAtPlayerX;
-                        
-                        float playerBottomY = playerY;
-                        float playerRightX = playerX + playerWidth;
-                        float rampRightX = worldX + currentLevel.tileSize;
-
-                        // Check if player is at the top-right edge of the ramp (launching off)
-                        if (!hasRampToRight && playerRightX > rampRightX - 10 && playerBottomY >= worldY + currentLevel.tileSize - 10) {
-                            // Launch at angle based on horizontal speed
-                            double angleRad = Math.toRadians(RAMP_LAUNCH_ANGLE);
-                            velocityY = (float)(speedPxPerSec * Math.sin(angleRad));
-                            isOnGround = false;
-                        } else {
-                            // Player is on the ramp surface - follow the slope
-                            if (velocityY <= 0 && playerBottomY < rampSurfaceY + 5) {
-                                // Place player on the sloped surface
-                                playerY = rampSurfaceY;
-                                velocityY = 0;
-                                isOnGround = true;
-                            }
+                } else if (tile == 2) { // Ramp
+                    if (playerX + playerWidth > worldX && playerX < worldX + currentLevel.tileSize) {
+                        float relativeX = (playerX + playerWidth / 2) - worldX;
+                        float rampHeight = (relativeX / currentLevel.tileSize) * currentLevel.tileSize;
+                        float currentRampY = worldY + rampHeight;
+                        if (currentRampY > highestY) {
+                            highestY = currentRampY;
+                            onRamp = true;
                         }
                     }
                 }
             }
+        }
+    
+        // Apply collision response
+        if (highestY != -1 && playerY <= highestY) {
+            playerY = highestY;
+            if (onRamp) {
+                // On a ramp, velocity is influenced by speed
+                velocityY = speedPxPerSec * RAMP_LAUNCH_VELOCITY_FACTOR;
+                isOnGround = false;
+            } else {
+                // On flat ground
+                velocityY = 0;
+                isOnGround = true;
+            }
+        } else {
+            isOnGround = false;
         }
     }
 
