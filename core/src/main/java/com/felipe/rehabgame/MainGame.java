@@ -85,7 +85,7 @@ public class MainGame extends ApplicationAdapter {
     private boolean isOnGround = false;
 
     // Player rendering
-    private final float PLAYER_SCALE = 0.25f; // Scale down the player texture to match tile size (~64px)
+    private final float PLAYER_SCALE = 0.35f; // Scale down the player texture to match tile size (~64px)
 
     @Override
     public void create() {
