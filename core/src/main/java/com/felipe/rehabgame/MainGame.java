@@ -71,6 +71,7 @@ public class MainGame extends ApplicationAdapter {
     private Texture rampTexture;
     private Texture lakeTexture;
     private Texture flagTexture;
+    private Texture dirtTexture;
 
     // Cached level rendering
     private FrameBuffer levelFrameBuffer;
@@ -84,7 +85,7 @@ public class MainGame extends ApplicationAdapter {
     private boolean isOnGround = false;
 
     // Player rendering
-    private final float PLAYER_SCALE = 0.18f; // Scale down the player texture to match tile size (~64px)
+    private final float PLAYER_SCALE = 0.25f; // Scale down the player texture to match tile size (~64px)
 
     @Override
     public void create() {
@@ -136,6 +137,9 @@ public class MainGame extends ApplicationAdapter {
 
         flagTexture = new Texture("flag.jpg");
         loadingProgress = 0.7f;
+
+        dirtTexture = new Texture("dirt.png");
+        loadingProgress = 0.75f;
 
         // Load player texture
         playerTexture = new Texture("moto.png");
@@ -392,10 +396,6 @@ public class MainGame extends ApplicationAdapter {
             int timeLeft = (int)(LEVEL_COMPLETE_DELAY - levelCompleteTimer);
             font.draw(batch, "Resetting in " + (timeLeft + 1) + "...", Gdx.graphics.getWidth() / 2 - 100, Gdx.graphics.getHeight() / 2 - 50);
             font.getData().setScale(1.5f);
-        } else if (levelComplete && currentLevelNumber >= MAX_LEVEL) {
-             // This case is handled by VICTORY state, but as a fallback
-            font.getData().setScale(3.0f);
-            font.draw(batch, "YOU WIN!", Gdx.graphics.getWidth() / 2 - 250, Gdx.graphics.getHeight() / 2);
         } else if (levelComplete) {
             font.getData().setScale(3.0f);
             String message = "LEVEL COMPLETE!";
@@ -434,6 +434,7 @@ public class MainGame extends ApplicationAdapter {
         if (rampTexture != null) rampTexture.dispose();
         if (lakeTexture != null) lakeTexture.dispose();
         if (flagTexture != null) flagTexture.dispose();
+        if (dirtTexture != null) dirtTexture.dispose();
         if (levelFrameBuffer != null) levelFrameBuffer.dispose();
         if (cachedLevelTexture != null) cachedLevelTexture.dispose();
     }
@@ -495,6 +496,7 @@ public class MainGame extends ApplicationAdapter {
             case 2: return rampTexture;
             case 3: return lakeTexture;
             case 4: return flagTexture;
+            case 6: return dirtTexture;
             default: return null;
         }
     }
